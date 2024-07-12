@@ -1,3 +1,4 @@
+from __future__ import annotations
 import shutil
 import time
 from typing import Callable, Union, Iterable, List
@@ -60,15 +61,15 @@ def get_run_dir():
 
 def get_spec(
     macro: str,
-    tile: str = None,
-    chip: str = None,
-    system: str = "ws_dummy_buffer_one_macro",
-    iso: str = None,
-    dnn: str = None,
-    layer: str = None,
+    tile: str | None = None,
+    chip: str | None = None,
+    system: str | None = "ws_dummy_buffer_one_macro",
+    iso: str | None = None,
+    dnn: str | None = None,
+    layer: str | None = None,
     max_utilization: bool = False,
     extra_print: str = "",
-    jinja_parse_data: dict = None,
+    jinja_parse_data: dict | None = None,
 ) -> tl.Specification:
     paths = [
         os.path.abspath(
@@ -107,6 +108,54 @@ def get_spec(
 
     return spec
 
+def get_spec_hd(
+    macro: str,
+    tile: str | None = None,
+    chip: str | None = None,
+    system: str | None = "ws_dummy_buffer_one_macro",
+    iso: str | None = None,
+    dnn: str | None = None,
+    layer: str | None = None,
+    max_utilization: bool = False,
+    extra_print: str = "",
+    jinja_parse_data: dict | None = None,
+) -> tl.Specification:
+    paths = [
+        os.path.abspath(
+            os.path.join(THIS_SCRIPT_DIR, "..", "models", "top.yaml.jinja2")
+        )
+    ]
+
+    jinja_parse_data = {
+        **(jinja_parse_data or {}),
+        "macro": macro,
+        "tile": tile,
+        "chip": chip,
+        "system": system,
+        "iso": iso if iso else macro,
+        "dnn": dnn,
+        "layer": layer,
+    }
+    jinja_parse_data = {k: v for k, v in jinja_parse_data.items() if v is not None}
+
+    paths2print = [p for p in paths]
+    while any(paths2print):
+        if all(paths2print[0][0] == p[0] for p in paths2print):
+            paths2print = [p[1:] for p in paths2print]
+        else:
+            break
+    paths2print = ", ".join(paths2print)
+
+    if not extra_print:
+        extra_print = f"{os.getpid()}.{threading.current_thread().ident}"
+
+    spec = tl.Specification.from_yaml_files(
+        *paths, processors=[ArrayProcessor], jinja_parse_data=jinja_parse_data
+    )
+    if max_utilization:
+        spec.variables["MAX_UTILIZATION"] = True
+
+    return spec
 
 def run_mapper(
     spec: tl.Specification,
