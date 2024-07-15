@@ -7,7 +7,9 @@ import yaml
 from torch import Tensor, nn
 import torch
 import math
-import numpy as np
+import shutil
+
+THIS_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 EXTRA_COMPONENT = """
 - !Component # Column readout (ADC)
@@ -25,26 +27,28 @@ EXTRA_COMPONENTS_CONFIG = "\n".join(
     EXTRA_COMPONENT.format(name) for name in EXTRA_NEUROSIM_COMPONENTS
 )
 
-def normalize_tensor(tensor: Tensor) -> List[float]:
+def normalize_tensor(tensor: Tensor, n_samples: int = 63) -> List[float]:
     flattened_tensor = tensor.flatten()
-    if min_value := flattened_tensor.min() < 0:
-        processed_tensor = flattened_tensor - min_value
+    indices = torch.randperm(flattened_tensor.size(0))[:n_samples]
+    sampled_tensor = flattened_tensor[indices]
+    if (min_value := sampled_tensor.min()) < 0:
+        processed_tensor = sampled_tensor - min_value
     else:
-        processed_tensor = flattened_tensor
+        processed_tensor = sampled_tensor
     
     tensor_sum = processed_tensor.sum()
     normalized_tensor = processed_tensor / tensor_sum
     normalized_list = normalized_tensor.tolist()
-    assert math.isclose(sum(normalized_list), 1.0), f"Sum of normalized list is not 1.0: {sum(normalized_list)}"
+    assert math.isclose(sum(normalized_list), 1.0, abs_tol=1e-5), f"Sum of normalized list is not 1.0: {sum(normalized_list)}"
+    assert len(normalized_list) == n_samples, f"Length of normalized list is not {n_samples}: {len(normalized_list)}"
     return normalized_list
 
-def process_data(data: List[float]) -> float:
-    d = np.array(data)
-    if np.min(d) < 0:
-        ret = (d + 1) / 2
+def process_data(data: Tensor) -> float:
+    if torch.min(data) < 0:
+        ret = (data + 1) / 2
     else:
-        ret = d
-    return np.mean(ret)
+        ret = data
+    return float(torch.mean(ret))
 
 def get_layer_data(model: nn.Module, input_tensor: Tensor):
     layer_data: List[Dict[str, Any]] = []
@@ -55,7 +59,7 @@ def get_layer_data(model: nn.Module, input_tensor: Tensor):
 
         layer_info = {
             'name': module.name,
-            'Inputs': input,
+            'Inputs': input[0],
             'Weight': module.weight,
             'Outputs': output,
             'instance': {"C": module.in_features, "M": module.out_features}
@@ -63,8 +67,14 @@ def get_layer_data(model: nn.Module, input_tensor: Tensor):
         layer_data.append(layer_info)
 
     hooks = []
-    for layer in model.children():
-        hooks.append(layer.register_forward_hook(hook_fn))
+    def register_hooks(module: nn.Module):
+        if len(list(module.children())) == 0:  # It's a bottom-level layer
+            hooks.append(module.register_forward_hook(hook_fn)) # type: ignore
+        else:
+            for submodule in module.children():
+                register_hooks(submodule)
+
+    register_hooks(model)
 
     with torch.no_grad():
         model(input_tensor)
@@ -78,23 +88,24 @@ def get_layer_data(model: nn.Module, input_tensor: Tensor):
 def write_layer(filename: str, instance: Dict[str, int], name: str, dnn_name: str, inputs: List[float], weights: List[float], outputs: List[float]):
     data = {
         'problem': {
-            '<<': "*problem_base",
+            '<<<': '*problem_base',
             'instance': instance,
             'name': name,
             'dnn_name': dnn_name,
             'notes': name,
             'histograms': {
-                "Inputs": inputs,
-                "Weights": weights,
-                "Outputs": outputs,
+                "Inputs": str(inputs),
+                "Weights": str(weights),
+                "Outputs": str(outputs),
             }
         }
     }
 
-    yaml_content = f"{{{{include_text('../problem_base.yaml')}}}}\n" + yaml.dump(data, default_flow_style=False, sort_keys=False)
+    yaml_content = yaml.dump(data, default_flow_style=False, sort_keys=False).replace("'", "").replace('"',"")
+    yaml_string = f"{{{{include_text('../problem_base.yaml')}}}}\n" + yaml_content
 
     with open(filename, 'w') as file:
-        file.write(yaml_content)
+        file.write(yaml_string)
 
 def run_layer(
     dnn: str,
@@ -103,6 +114,7 @@ def run_layer(
     avg_weight: float,
     shape: tuple,
     reram_size: int,
+    frequency: float,
     max_mappings: int | None = None,
 ):
     spec = get_spec_hd(
@@ -129,7 +141,7 @@ def run_layer(
             TEMPORAL_DAC_RESOLUTION=1,
             N_SHIFT_ADDS_PER_BANK=16,
             N_ADC_PER_BANK=16,
-            BASE_LATENCY=1e-12,  # For near-zero leakage, make it really fast.
+            BASE_LATENCY=1/frequency,  # For near-zero leakage, make it really fast.
             READ_PULSE_WIDTH=1e-8,
             VOLTAGE_ENERGY_SCALE=1,
             VOLTAGE_LATENCY_SCALE=1,
@@ -192,20 +204,26 @@ def run_layer(
         rs.maximize_dims = None
 
     # Run the mapper
-    return run_mapper(spec)
+    ret = run_mapper(spec)
+    return ret
 
 def write_model(model_name: str, layer_data: List[Dict[str, Any]]) -> None:
+    model_dir = os.path.join(THIS_SCRIPT_DIR, f"models/workloads/{model_name}")
+    if os.path.exists(model_dir):
+        shutil.rmtree(model_dir)
+    os.makedirs(model_dir)
+
     for layer in layer_data:
         name = layer['name']
         inputs = normalize_tensor(layer['Inputs'])
         weights = normalize_tensor(layer['Weight'])
         outputs = normalize_tensor(layer['Outputs'])
         instance = layer['instance']
-        write_layer(f"models/workloads/{model_name}/{name}.yaml", instance, name, model_name, inputs, weights, outputs)
+        write_layer(os.path.join(THIS_SCRIPT_DIR,f"models/workloads/{model_name}/{name}.yaml"), instance, name, model_name, inputs, weights, outputs)
 
 def get_averages(layer_data: List[Dict[str, Any]]) -> Tuple[List[float], List[float], List[Tuple[int, ...]]]:
-    input_averages: List[float] = [process_data([i['Inputs'] for i in layer_data])]
-    weight_averages: List[float] = [process_data([i['Weight'] for i in layer_data])]
+    input_averages: List[float] = [process_data(i['Inputs']) for i in layer_data]
+    weight_averages: List[float] = [process_data(i['Weight']) for i in layer_data]
 
     def get_shape(layer: Dict[str, int]) -> Tuple[int, ...]:
         return (1, 1, layer["C"], 1, 1, layer["M"], 0, 1)
@@ -215,16 +233,32 @@ def get_averages(layer_data: List[Dict[str, Any]]) -> Tuple[List[float], List[fl
     return input_averages, weight_averages, SHAPES
 
 def cimloop_ppa(model_name: str, model: nn.Module, x_test: Tensor, ram_size: int, frequency: int, temperature: int, cell_bit: int):
+    """
+    Args:
+        model_name: model name
+        model: model
+        test_loader: test data loader
+        ram_size: ram size
+        frequency: frequency
+        temperature: temperature
+        cell_bit: cell bit
+    Returns:
+        energy: uJ
+        latency: us
+        area: mm^2
+        clock period: us
+    """
     layer_data = get_layer_data(model, x_test)
     write_model(model_name, layer_data)
     input_averages, weight_averages, SHAPES = get_averages(layer_data)
     
-    layers = [f for f in os.listdir(f"models/workloads/{model_name}") if f != "index.yaml" and f.endswith(".yaml")]
+    model_dir = os.path.join(THIS_SCRIPT_DIR, f"models/workloads/{model_name}")
+    layers = [f for f in os.listdir(model_dir) if f != "index.yaml" and f.endswith(".yaml")]
     layers = sorted(l.split(".")[0] for l in layers)
 
     # # CiMLoop One Mapping
     results = joblib.Parallel(n_jobs=32)(
-        joblib.delayed(run_layer)(model_name, layer, avg_input, avg_weight, shape, ram_size)
+        joblib.delayed(run_layer)(model_name, layer, avg_input, avg_weight, shape, ram_size, frequency)
         for layer, avg_input, avg_weight, shape in zip(
             layers, input_averages, weight_averages, SHAPES
         )
@@ -238,6 +272,18 @@ def cimloop_ppa(model_name: str, model: nn.Module, x_test: Tensor, ram_size: int
     #     )
     # )
 
-    for result in results: 
-        pass
-    return list(results)
+    energy_list = [result.energy for result in results] # type: ignore
+    latency_list = [result.latency for result in results] # type: ignore
+    area_list = [result.area for result in results] # type: ignore
+    cycle_seconds_list = [result.cycle_seconds for result in results] # type: ignore
+
+    energy_sum = sum(energy_list)
+    latency_sum = sum(latency_list)
+    area_sum = sum(area_list)
+
+    energy = energy_sum * 1e6 # J -> uJ
+    latency = latency_sum * 1e6 # s -> us
+    area = area_sum * 1e6 # m^2 -> mm^2
+    clock_period = min(cycle_seconds_list) * 1e6 # s -> us
+
+    return energy, latency, area, clock_period

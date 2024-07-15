@@ -160,7 +160,7 @@ def get_spec_hd(
 def run_mapper(
     spec: tl.Specification,
     accelergy_verbose: bool = False,
-) -> dict:
+) -> MacroOutputStats:
     output_dir = get_run_dir()
 
     run_prefix = f"{output_dir}/timeloop-mapper"
