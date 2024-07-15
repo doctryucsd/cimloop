@@ -256,13 +256,19 @@ def cimloop_ppa(model_name: str, model: nn.Module, x_test: Tensor, ram_size: int
     layers = [f for f in os.listdir(model_dir) if f != "index.yaml" and f.endswith(".yaml")]
     layers = sorted(l.split(".")[0] for l in layers)
 
-    # # CiMLoop One Mapping
+    # CiMLoop One Mapping
     results = joblib.Parallel(n_jobs=32)(
         joblib.delayed(run_layer)(model_name, layer, avg_input, avg_weight, shape, ram_size, frequency)
         for layer, avg_input, avg_weight, shape in zip(
             layers, input_averages, weight_averages, SHAPES
         )
     )
+
+    # DEBUG
+    # results = []
+    # for layer, avg_input, avg_weight, shape in zip(layers, input_averages, weight_averages, SHAPES):
+    #     result = run_layer(model_name, layer, avg_input, avg_weight, shape, ram_size, frequency)
+    #     results.append(result)
 
     # CiMLoop 10k mappings
     # results = joblib.Parallel(n_jobs=32)(
