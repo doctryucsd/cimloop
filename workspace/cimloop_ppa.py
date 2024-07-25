@@ -6,8 +6,8 @@ from typing import List, Tuple, Dict, Any
 import yaml
 from torch import Tensor, nn
 import torch
-import math
 import shutil
+import numpy as np
 
 THIS_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -27,21 +27,14 @@ EXTRA_COMPONENTS_CONFIG = "\n".join(
     EXTRA_COMPONENT.format(name) for name in EXTRA_NEUROSIM_COMPONENTS
 )
 
-def normalize_tensor(tensor: Tensor, n_samples: int = 63) -> List[float]:
-    flattened_tensor = tensor.flatten()
-    indices = torch.randperm(flattened_tensor.size(0))[:n_samples]
-    sampled_tensor = flattened_tensor[indices]
-    if (min_value := sampled_tensor.min()) < 0:
-        processed_tensor = sampled_tensor - min_value
-    else:
-        processed_tensor = sampled_tensor
+def tensor2histogram(tensor: Tensor, n_samples: int = 31) -> List[float]:
+    tensor_np = tensor.cpu().detach().numpy()
     
-    tensor_sum = processed_tensor.sum()
-    normalized_tensor = processed_tensor / tensor_sum
-    normalized_list = normalized_tensor.tolist()
-    assert math.isclose(sum(normalized_list), 1.0, abs_tol=1e-5), f"Sum of normalized list is not 1.0: {sum(normalized_list)}"
-    assert len(normalized_list) == n_samples, f"Length of normalized list is not {n_samples}: {len(normalized_list)}"
-    return normalized_list
+    hist, _ = np.histogram(tensor_np, bins=n_samples, range=(np.min(tensor_np), np.max(tensor_np)), density=True)
+
+    ret: np.ndarray = hist / np.sum(hist)
+
+    return ret.tolist()
 
 def process_data(data: Tensor) -> float:
     if torch.min(data) < 0:
@@ -134,7 +127,7 @@ def run_layer(
             INPUT_ENCODING_FUNC="offset_encode_if_signed_hist",
             WEIGHT_ENCODING_FUNC="offset_encode_if_signed_hist",
             VOLTAGE=0.85,
-            TECHNOLOGY=22,  # nm
+            TECHNOLOGY=32,  # nm
             BITS_PER_CELL=2,
             ADC_RESOLUTION=5,
             VOLTAGE_DAC_RESOLUTION=1,
@@ -215,9 +208,9 @@ def write_model(model_name: str, layer_data: List[Dict[str, Any]]) -> None:
 
     for layer in layer_data:
         name = layer['name']
-        inputs = normalize_tensor(layer['Inputs'])
-        weights = normalize_tensor(layer['Weight'])
-        outputs = normalize_tensor(layer['Outputs'])
+        inputs = tensor2histogram(layer['Inputs'])
+        weights = tensor2histogram(layer['Weight'])
+        outputs = tensor2histogram(layer['Outputs'])
         instance = layer['instance']
         write_layer(os.path.join(THIS_SCRIPT_DIR,f"models/workloads/{model_name}/{name}.yaml"), instance, name, model_name, inputs, weights, outputs)
 
