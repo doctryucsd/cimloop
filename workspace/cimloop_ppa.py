@@ -283,6 +283,6 @@ def cimloop_ppa(model_name: str, model: nn.Module, x_test: Tensor, ram_size: int
     energy = energy_sum * 1e6 # J -> uJ
     latency = latency_sum * 1e6 # s -> us
     area = area_sum * 1e6 # m^2 -> mm^2
-    clock_period = min(cycle_seconds_list) * 1e6 # s -> us
+    clock_period: float = min(cycle_seconds_list) * 1e6 # s -> us
 
     return energy, latency, area, clock_period
