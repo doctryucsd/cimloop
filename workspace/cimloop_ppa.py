@@ -214,6 +214,23 @@ def write_model(model_name: str, layer_data: List[Dict[str, Any]]) -> None:
         instance = layer['instance']
         write_layer(os.path.join(THIS_SCRIPT_DIR,f"models/workloads/{model_name}/{name}.yaml"), instance, name, model_name, inputs, weights, outputs)
 
+def results2ppa(results):
+    energy_list = [result.energy for result in results] # type: ignore
+    latency_list = [result.latency for result in results] # type: ignore
+    area_list = [result.area for result in results] # type: ignore
+    cycle_seconds_list = [result.cycle_seconds for result in results] # type: ignore
+
+    energy_sum = sum(energy_list)
+    latency_sum = sum(latency_list)
+    area_sum = sum(area_list)
+
+    energy = energy_sum * 1e6 # J -> uJ
+    latency = latency_sum * 1e6 # s -> us
+    area = area_sum * 1e6 # m^2 -> mm^2
+    clock_period: float = min(cycle_seconds_list) * 1e6 # s -> us
+
+    return energy, latency, area, clock_period
+
 def get_averages(layer_data: List[Dict[str, Any]]) -> Tuple[List[float], List[float], List[Tuple[int, ...]]]:
     input_averages: List[float] = [process_data(i['Inputs']) for i in layer_data]
     weight_averages: List[float] = [process_data(i['Weight']) for i in layer_data]
@@ -225,7 +242,7 @@ def get_averages(layer_data: List[Dict[str, Any]]) -> Tuple[List[float], List[fl
 
     return input_averages, weight_averages, SHAPES
 
-def cimloop_ppa(model_name: str, model: nn.Module, x_test: Tensor, ram_size: int, frequency: int, temperature: int, cell_bit: int):
+def cimloop_ppa(model_name: str, model: nn.Module, x_test: Tensor, ram_size: int, frequency: int, cell_bit: int):
     """
     Args:
         model_name: model name
@@ -271,18 +288,4 @@ def cimloop_ppa(model_name: str, model: nn.Module, x_test: Tensor, ram_size: int
     #     )
     # )
 
-    energy_list = [result.energy for result in results] # type: ignore
-    latency_list = [result.latency for result in results] # type: ignore
-    area_list = [result.area for result in results] # type: ignore
-    cycle_seconds_list = [result.cycle_seconds for result in results] # type: ignore
-
-    energy_sum = sum(energy_list)
-    latency_sum = sum(latency_list)
-    area_sum = sum(area_list)
-
-    energy = energy_sum * 1e6 # J -> uJ
-    latency = latency_sum * 1e6 # s -> us
-    area = area_sum * 1e6 # m^2 -> mm^2
-    clock_period: float = min(cycle_seconds_list) * 1e6 # s -> us
-
-    return energy, latency, area, clock_period
+    return results2ppa(results)
