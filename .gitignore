@@ -20,5 +20,5 @@ workspace/.jupyter
 workspace/.jupyter
 workspace/.local
 workspace/.local
+workspace/models/workloads/HD/*
 *-checkpoint*
-**/HD/*
