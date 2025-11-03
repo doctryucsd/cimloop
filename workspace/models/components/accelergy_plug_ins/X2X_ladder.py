@@ -1,9 +1,22 @@
 import math
-from accelergy.plug_in_interface.estimator import Estimator, actionDynamicEnergy
-from utils.bit_functions import *
-from utils.bit_functions import *
-from misc import *
+import sys
+from pathlib import Path
 from typing import List
+from accelergy.plug_in_interface.estimator import Estimator, actionDynamicEnergy
+
+# Ensure helper utilities are importable when loaded as a standalone plug-in
+_PLUGIN_DIR = Path(__file__).resolve().parent
+_UTILS_DIR = _PLUGIN_DIR / "utils"
+if str(_UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(_UTILS_DIR))
+
+from bit_functions import *  # noqa: E402,F401,F403
+
+# Import sibling estimators after utils are loaded
+if str(_PLUGIN_DIR) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_DIR))
+
+from misc import *  # noqa: E402,F401,F403
 
 
 def value2bits(value: int, resolution: int) -> List[int]:

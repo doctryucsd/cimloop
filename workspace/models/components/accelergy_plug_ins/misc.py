@@ -1,7 +1,16 @@
+import sys
+from pathlib import Path
 from numbers import Number
 from typing import Optional, List
 from accelergy.plug_in_interface.estimator import Estimator, actionDynamicEnergy
-from utils.bit_functions import *
+
+# Ensure helper utilities can be imported when Accelergy loads this plug-in dynamically
+_PLUGIN_DIR = Path(__file__).resolve().parent
+_UTILS_DIR = _PLUGIN_DIR / "utils"
+if str(_UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(_UTILS_DIR))
+
+from bit_functions import *  # noqa: E402,F401,F403
 
 
 class Capacitor(Estimator):
