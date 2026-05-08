@@ -2,23 +2,22 @@
 # Device type and top-level parameters
 
 # Device type
--MemCellType: RRAM  # SRAM or RRAM
+-MemCellType: SRAM  # SRAM or RRAM
 # -ReadMode: current  # Comment this line for voltage
 -DeviceRoadmap -1LP 1HP 2LSTP:  2
 
 # Device size
--CellArea (F^2):  16 # NeuroSim gets mad if it's too small. Doesn't matter too
-                     # much because this is pretty small in the overall accelerator.
--CellAspectRatio: 1 # Width/Height
+-CellArea (F^2):  24
+-CellAspectRatio: 1.25 # Width/Height
 
 # Calibration parameters
 -CellReadLeakEnergyMultiplier: 1
 -CellWriteEnergyMultiplier: 1
--CellCapacitanceMultiplier: 0.3 # Correct for cell area scaling
--CellCapacitanceAdjust (F): 0.0e-15 # Capacitance = (Nominal Capacitance) * Multiplier + Adjust
+-CellCapacitanceMultiplier: 0
+-CellCapacitanceAdjust (F): 0.174e-15 # Capacitance = (Nominal Capacitance) * Multiplier + Adjust
 
 # Used for RRAM with access transistors or SRAM
--AccessCMOSWidth (F): 4
+-AccessCMOSWidth (F): 0
 
 # Affects NeuroSim-realized ADCs. NOTE: Most models use ADC plug-in ADCs and
 # this has little to no effect.
@@ -34,8 +33,8 @@
 # -----------------------------------------------------------------------------
 # RRAM-only parameters
 # RRAM configuration. Only used if MemCellType is RRAM
--ResistanceOn (ohm): 1333
--ResistanceOff (ohm): 20000
+-ResistanceOn (ohm): 625000
+-ResistanceOff (ohm): 10000000
 
 # Set parameters
 -SetVoltage (V): 2 # From PRIME
@@ -45,8 +44,8 @@
 # -SetPower (uW): 800   # OVERWRITES PREVIOUS LINES IF UNCOMMENTED
 
 # Read parameters
--ReadVoltage (V): 0.2 # From PRIME
--ReadPulse (ns): 1
+-ReadVoltage (V): 0.5 # From PRIME
+-ReadPulse (ns): 5
 # -ReadCurrent (uA): 40 # OVERWRITES PREVIOUS LINES IF UNCOMMENTED
 # -ReadEnergy (pJ): 0.008  # OVERWRITES PREVIOUS LINES IF UNCOMMENTED
 # -ReadPower (uW): 8   # OVERWRITES PREVIOUS LINES IF UNCOMMENTED

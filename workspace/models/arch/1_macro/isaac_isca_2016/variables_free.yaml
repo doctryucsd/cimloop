@@ -2,7 +2,6 @@
 # matched while comparing architectures.
 variables:
   version: 0.4
-  CIM_ARCHITECTURE: True
   # ===========================================================================
   # Set by CiM Processor
   # ===========================================================================
@@ -15,12 +14,12 @@ variables:
   # ===========================================================================
   # Encoding-dependent parameters
   # ===========================================================================
-  ENCODED_INPUT_BITS:  INPUT_BITS * (2 if is_hist_signed(INPUTS_HIST) else 1)
-  ENCODED_WEIGHT_BITS: WEIGHT_BITS * (2 if is_hist_signed(WEIGHTS_HIST) else 1)
+  ENCODED_INPUT_BITS:  INPUT_BITS
+  ENCODED_WEIGHT_BITS: WEIGHT_BITS
   ENCODED_OUTPUT_BITS: OUTPUT_BITS
 
-  INPUT_ENCODING_FUNC: two_part_magnitude_encode_if_signed_hist
-  WEIGHT_ENCODING_FUNC: two_part_magnitude_encode_if_signed_hist
+  INPUT_ENCODING_FUNC: offset_encode_hist
+  WEIGHT_ENCODING_FUNC: offset_encode_hist
 
   # For accuracy model. Can in-array accumulation include signed values?
   # Signed accumulation not compatible with offset encoding (since offset
@@ -31,23 +30,37 @@ variables:
   # ===========================================================================
   # Architecture & CiM Array Structure
   # ===========================================================================
-  CIM_UNIT_WIDTH_CELLS:  4
+  # DEFINITIONS:
+  # - Cell: Smallest structure capable of storing memory. Note that a cell may
+  #         store more than one bit. For example, a cell consisting of a RRAM
+  #         device may store >1 bits, while a cell consisting of an SRAM
+  #         bitcell may store only 1 bit. 
+  # - CiM Unit: Smallest structure capable of computing an analog MAC.
+  # - CiM Unit Width Cells: 
+  #     Number of CiM unit cells that are accessed as one. These cells receive
+  #     one analog input and compute one analog MAC per timestep.
+  # - CiM Unit Depth Cells: 
+  #     Number of independent groups of "CiM Unit Width" cells that form a CiM
+  #     unit. Each of these groups is indepently addressible and operates in
+  #     must be activated in a different timestep than the others.
+
+  CIM_UNIT_WIDTH_CELLS:  1
   CIM_UNIT_DEPTH_CELLS:  1
-  BITS_PER_CELL:         1
+  BITS_PER_CELL:         2
 
   # ===========================================================================
   # Data Converters
   # ===========================================================================
-  N_COLUMNS: 16
-  ADC_RESOLUTION: 4
+  ADC_RESOLUTION: 8
   VOLTAGE_DAC_RESOLUTION: 1
-  TEMPORAL_DAC_RESOLUTION: 4
+  TEMPORAL_DAC_RESOLUTION: 1
   DAC_RESOLUTION: max(VOLTAGE_DAC_RESOLUTION, TEMPORAL_DAC_RESOLUTION)
-  N_ADC_PER_BANK: N_COLUMNS
+
+  N_ADC_PER_BANK: 1
 
   # ===========================================================================
   # Hardware
   # ===========================================================================
-  BASE_LATENCY: 5.5e-9 # ns per cycle
-  GLOBAL_CYCLE_SECONDS: BASE_LATENCY * VOLTAGE_LATENCY_SCALE
-  READ_PULSE_WIDTH: GLOBAL_CYCLE_SECONDS / 2 / (2 ** DAC_RESOLUTION - 1)
+  BASE_LATENCY: 1e-9
+  GLOBAL_CYCLE_SECONDS: BASE_LATENCY
+  READ_PULSE_WIDTH: BASE_LATENCY
